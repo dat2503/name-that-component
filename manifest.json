@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Name That Component",
+  "version": "1.1.0",
+  "description": "Point at any UI element and get its name — the app's own React/Vue/Angular component name when available, plus design system (MUI, Ant, Bootstrap, shadcn/ui…), ARIA role, and semantic labels like \"Save Panel\". Fully offline, no data leaves your browser.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Name That Component (Alt+Shift+C)"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "commands": {
+    "toggle-picker": {
+      "suggested_key": {
+        "default": "Alt+Shift+C"
+      },
+      "description": "Toggle the component picker"
+    }
+  }
+}
