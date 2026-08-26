@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { readFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -9,8 +9,10 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDir, "..");
 const fixturePath = join(scriptDir, "fixtures", "store-demo.html");
 const screenshotPath = join(projectRoot, "docs", "store-assets", "screenshot-1280x800.png");
+const frameRoot = join(projectRoot, "docs", "store-assets", "video-frames");
 const chromePath = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const profilePath = await mkdtemp(join(tmpdir(), "ntc-smoke-"));
+await mkdir(frameRoot, { recursive: true });
 
 function delay(ms) { return new Promise((resolveDelay) => setTimeout(resolveDelay, ms)); }
 
@@ -107,6 +109,13 @@ try {
   await cdp.send("Runtime.evaluate", { expression: `${contentScript}\n//# sourceURL=ntc-content-smoke.js` });
   await cdp.send("Runtime.evaluate", { expression: "window.__ntcToggle()" });
 
+  async function capture(path) {
+    const screenshot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+    await writeFile(path, Buffer.from(screenshot.data, "base64"));
+  }
+
+  await capture(join(frameRoot, "01-activate-picker.png"));
+
   async function inspect(selector) {
     const rectResult = await cdp.send("Runtime.evaluate", {
       expression: `(() => { const el = document.querySelector(${JSON.stringify(selector)}); el.style.position = "static"; el.scrollIntoView({ block: "center" }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
@@ -129,11 +138,13 @@ try {
   if (!ideal.includes("Checkout Button") || !ideal.includes("Pay $48.00") || !ideal.includes("CheckoutButton.tsx:42")) {
     throw new Error(`Ideal React boundary did not render expected details:\n${ideal}`);
   }
+  await capture(join(frameRoot, "02-react-component.png"));
 
   const common = await inspect("input#card-name");
   if (!common.includes("Name on card") || !common.includes("Ada Lovelace")) {
     throw new Error(`Common labeled-input boundary did not render expected details:\n${common}`);
   }
+  await capture(join(frameRoot, "03-accessible-input.png"));
 
   const messy = await inspect("#messy");
   if (!messy.includes("Save & continue") || !messy.includes("日本語") || !messy.includes("🚀")) {
@@ -141,9 +152,10 @@ try {
   }
 
   await cdp.send("Runtime.evaluate", { expression: "document.querySelector('#messy').style.position = 'absolute'" });
+  await inspect("aside[aria-label='Order summary']");
+  await capture(join(frameRoot, "04-semantic-panel.png"));
   await inspect("#checkout");
-  const screenshot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
-  await writeFile(screenshotPath, Buffer.from(screenshot.data, "base64"));
+  await capture(screenshotPath);
   console.log("Browser smoke test passed: real bridge/content scripts, React metadata, labeled input, Unicode text, and rendered panel.");
   console.log(`Created ${screenshotPath}`);
 } finally {

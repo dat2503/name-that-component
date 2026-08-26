@@ -67,12 +67,46 @@ role.
 - **Regions:** All regions unless a legal or support constraint requires less
 - **Pricing:** Free
 
+## Test instructions
+
+No account or test credentials are required.
+
+1. Open any ordinary `http://` or `https://` webpage. Chrome-internal pages,
+   the Chrome Web Store, and other restricted pages intentionally cannot be
+   inspected.
+2. Click the extension toolbar icon and choose **Activate picker**, or press
+   `Alt+Shift+C`.
+3. Hover over page elements and click one to lock the result panel.
+4. Use the arrow keys to navigate to a parent, child, or sibling.
+5. Choose **Copy details** to copy the local inspection result, then press
+   `Esc` or **Exit**.
+
+For a component-name result, test on a non-minified React, Vue, Angular, or
+Astro development page. On production pages, component names may be minified;
+the documented structural and semantic fallback is expected behavior.
+
+## Developer-account prerequisites
+
+Before the first submission, the publishing Google account must:
+
+- accept the Chrome Web Store developer agreement and policies;
+- pay Google's one-time developer registration fee;
+- provide and verify a developer contact email; and
+- complete any identity or two-step verification requested by Google.
+
+These account-level actions must be completed by the account owner in the
+Developer Dashboard.
+
 ## Required assets
 
 - Upload package: `release/name-that-component-1.3.0.zip`
 - Store icon: `icons/icon128.png` (128 x 128)
 - Screenshot: `docs/store-assets/screenshot-1280x800.png` (1280 x 800)
 - Small promo tile: `docs/store-assets/small-promo-440x280.png` (440 x 280)
+- Promotional video source: `docs/store-assets/demo-video-1280x720.mp4`; upload
+  to YouTube as unlisted/public and enter its URL (required by the current
+  Store Listing documentation)
+- Marquee promo tile: `docs/store-assets/marquee-promo-1400x560.png` (optional)
 
 Screenshots and promotional art must show the actual extension accurately and
 must not imply features the extension does not provide.
