@@ -23,6 +23,12 @@ Everything runs locally in your browser through the extension's background
 worker, isolated content script, and packaged main-world bridge. There are no
 network requests, external API calls, analytics, or data collection.
 
+![Name That Component inspecting CmdKey's shortcut search input](docs/store-assets/cmdkey-live-inspection.png)
+
+_A real inspection on [CmdKey](https://cmdkey.vercel.app/app): React and
+shadcn/ui detected locally, with a high-confidence result and reusable CSS
+locator._
+
 ## Chrome Web Store status
 
 The Store listing is being prepared for review. Its public link will be added
