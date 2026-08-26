@@ -4,7 +4,7 @@
 async function ensureScripts(tabId) {
   // Bridge must run in the page's JS world so it can read React fiber / Vue /
   // Angular internals. Content scripts run in an isolated world and cannot.
-  const NTC_VERSION = "1.3.0";
+  const NTC_VERSION = "1.0.0";
 
   const [{ result: bridgeOk } = {}] = await chrome.scripting.executeScript({
     target: { tabId },

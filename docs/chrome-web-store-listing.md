@@ -99,7 +99,7 @@ Developer Dashboard.
 
 ## Required assets
 
-- Upload package: `release/name-that-component-1.3.0.zip`
+- Upload package: `release/name-that-component-1.0.0.zip`
 - Store icon: `icons/icon128.png` (128 x 128)
 - Screenshot: `docs/store-assets/screenshot-1280x800.png` (1280 x 800)
 - Small promo tile: `docs/store-assets/small-promo-440x280.png` (440 x 280)

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Name That Component",
-  "version": "1.3.0",
+  "version": "1.0.0",
   "description": "Identify UI elements by framework component, design system, ARIA role, and semantic label—entirely offline.",
   "minimum_chrome_version": "95",
   "homepage_url": "https://github.com/dat2503/name-that-component",

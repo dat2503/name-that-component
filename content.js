@@ -1,7 +1,7 @@
 (() => {
   // Versioned so an extension update can re-inject over an older content script
   // without requiring a full page reload.
-  const NTC_VERSION = "1.3.0";
+  const NTC_VERSION = "1.0.0";
   if (window.__ntcInjected === NTC_VERSION) return;
   if (window.__ntcCleanup) {
     try { window.__ntcCleanup(); } catch (_) {}

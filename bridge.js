@@ -2,7 +2,7 @@
 // own JS environment. Content scripts cannot see those expandos (isolated world),
 // so detection must run here. Communicates via shared DOM attributes + a sync event.
 (() => {
-  const NTC_VERSION = "1.3.0";
+  const NTC_VERSION = "1.0.0";
   if (window.__ntcBridge === NTC_VERSION) return;
   if (typeof window.__ntcBridgeHandler === "function") {
     try {
