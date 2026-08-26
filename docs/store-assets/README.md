@@ -23,3 +23,10 @@ The current Chrome Web Store listing documentation asks for a YouTube promo
 video. Upload the MP4 as an unlisted or public video, then paste its URL in the
 Store Listing tab. Do not upload it as private because Store reviewers must be
 able to view it.
+
+After generating the extension ZIP and all assets, create one dashboard bundle
+with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/package-store-assets.ps1
+```
