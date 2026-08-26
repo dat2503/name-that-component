@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Component Lab</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #f5f7fb; color: #172033; font: 15px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; }
+    header { height: 68px; display: flex; align-items: center; justify-content: space-between; padding: 0 46px; background: #fff; border-bottom: 1px solid #e5e9f2; }
+    .brand { display: flex; gap: 11px; align-items: center; font-size: 17px; font-weight: 750; }
+    .brand-mark { display: grid; place-items: center; width: 34px; height: 34px; color: #fff; background: #6558d3; border-radius: 10px; }
+    nav { display: flex; gap: 28px; color: #687187; font-size: 14px; }
+    main { max-width: 1188px; margin: 0 auto; padding: 48px 44px 70px; }
+    .eyebrow { margin: 0 0 8px; color: #6558d3; font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 36px; letter-spacing: -.04em; }
+    .lead { max-width: 650px; margin: 10px 0 32px; color: #687187; font-size: 17px; }
+    .grid { display: grid; grid-template-columns: 1.12fr .88fr; gap: 22px; }
+    .card { background: #fff; border: 1px solid #e2e7f0; border-radius: 18px; box-shadow: 0 14px 32px rgba(40, 50, 76, .07); }
+    .checkout { padding: 30px; }
+    .checkout h2, .summary h2 { margin: 0 0 22px; font-size: 19px; }
+    .field { margin-bottom: 18px; }
+    label { display: block; margin-bottom: 7px; color: #465067; font-size: 13px; font-weight: 700; }
+    input { width: 100%; padding: 12px 13px; border: 1px solid #cfd6e4; border-radius: 9px; font: inherit; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .checkout-button { width: 100%; margin-top: 7px; padding: 13px 20px; color: #fff; background: #6558d3; border: 0; border-radius: 10px; font: 750 15px/1.2 inherit; box-shadow: 0 8px 18px rgba(101, 88, 211, .25); }
+    .summary { padding: 30px; }
+    .item { display: flex; gap: 14px; padding: 17px 0; border-bottom: 1px solid #edf0f5; }
+    .thumb { width: 54px; height: 54px; background: linear-gradient(135deg, #e9e5ff, #cdc6ff); border-radius: 12px; }
+    .item strong { display: block; }
+    .item span { color: #7d8699; font-size: 13px; }
+    .total { display: flex; justify-content: space-between; padding-top: 22px; font-size: 18px; font-weight: 800; }
+    .test-note { margin-top: 22px; padding: 14px 17px; color: #586177; background: #eef1f7; border-radius: 10px; font-size: 13px; }
+    #messy { position: absolute; left: -9999px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="brand-mark">C</span> Component Lab</div>
+    <nav><span>Projects</span><span>Components</span><span>Settings</span></nav>
+  </header>
+  <main>
+    <p class="eyebrow">Checkout flow</p>
+    <h1>Complete your order</h1>
+    <p class="lead">A realistic development page used to demonstrate local component inspection.</p>
+    <div class="grid">
+      <section class="card checkout" aria-labelledby="payment-heading">
+        <h2 id="payment-heading">Payment details</h2>
+        <div class="field"><label for="card-name">Name on card</label><input id="card-name" value="Ada Lovelace"></div>
+        <div class="field"><label for="card-number">Card number</label><input id="card-number" value="•••• •••• •••• 4242"></div>
+        <div class="row">
+          <div class="field"><label for="expiry">Expiry</label><input id="expiry" value="08 / 29"></div>
+          <div class="field"><label for="cvc">CVC</label><input id="cvc" value="•••"></div>
+        </div>
+        <button id="checkout" class="checkout-button MuiButton-root" data-testid="checkout-submit" aria-label="Pay $48.00">Pay $48.00</button>
+      </section>
+      <aside class="card summary" aria-label="Order summary">
+        <h2>Order summary</h2>
+        <div class="item"><div class="thumb"></div><div><strong>Interface Kit</strong><span>Developer license</span></div></div>
+        <div class="item"><div class="thumb"></div><div><strong>Icon Library</strong><span>1,200 vector icons</span></div></div>
+        <div class="total"><span>Total</span><span>$48.00</span></div>
+        <div class="test-note">The inspector runs entirely in your browser. No page data is uploaded.</div>
+      </aside>
+    </div>
+    <button id="messy" aria-label="Save &amp; continue — 日本語 🚀" class="generated_x7a93 very-long-token">Messy boundary input</button>
+  </main>
+  <script>
+    function CheckoutButton() {}
+    function PaymentPanel() {}
+    const checkout = document.getElementById("checkout");
+    checkout["__reactFiber$storeDemo"] = {
+      type: "button",
+      return: {
+        type: CheckoutButton,
+        _debugSource: { fileName: "/demo/src/components/CheckoutButton.tsx", lineNumber: 42 },
+        return: { type: PaymentPanel, return: null }
+      }
+    };
+  </script>
+</body>
+</html>

@@ -16,6 +16,9 @@
     background: #111827; color: #fff; border: none; border-radius: 8px; cursor: pointer;
   }
   button#activate:hover { background: #1f2937; }
+  button#activate:disabled { opacity: 0.6; cursor: default; }
+  .status { margin-top: 10px; font-size: 11px; color: #6b7280; line-height: 1.4; min-height: 0; }
+  .status.err { color: #b91c1c; }
   .hint { margin-top: 12px; font-size: 11px; color: #9ca3af; line-height: 1.6; }
   .hint kbd {
     background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px;
@@ -27,11 +30,13 @@
 </head>
 <body>
   <h1>🔍 Name That Component</h1>
-  <p class="sub">Point at any UI element on the page and see its component name — ARIA role, native HTML, or the design system it comes from (MUI, Ant Design, Bootstrap, Chakra, shadcn/ui, and more).</p>
+  <p class="sub">Point at any UI element on the page and see its component name — the app's React/Vue/Angular name when available, plus ARIA role, native HTML, or design system (MUI, Ant, Bootstrap, shadcn/ui, and more).</p>
   <button id="activate">Activate picker</button>
+  <div id="status" class="status"></div>
   <div class="hint">
     Or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> on any page.<br/>
-    Click an element to lock it in, <kbd>Esc</kbd> to exit.
+    Click an element to lock it in, <kbd>Esc</kbd> to exit.<br/>
+    Best on <strong>dev/staging</strong> builds — production often minifies names.
   </div>
   <div class="privacy">Runs entirely offline — nothing on the page is ever sent anywhere.</div>
   <script src="popup.js"></script>

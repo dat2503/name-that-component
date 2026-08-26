@@ -1,5 +1,7 @@
 # Name That Component
 
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A Chrome extension that lets you point at any UI element on a page and see
 what it is. It combines three layers of evidence:
 
@@ -19,6 +21,11 @@ what it is. It combines three layers of evidence:
 Everything runs locally in the content script. No network requests, no
 external API calls, no data collection.
 
+## Install from the Chrome Web Store
+
+The public store link will be added here after Chrome Web Store review. Until
+then, use the unpacked installation instructions below.
+
 ## Install (unpacked, for development/personal use)
 
 1. Unzip this folder somewhere permanent (don't delete it after installing —
@@ -33,13 +40,14 @@ external API calls, no data collection.
 - Click the toolbar icon (or press `Alt+Shift+C`) on any webpage.
 - Hover over elements — a quick-guess label follows your cursor.
 - Click an element to lock it in (it gets a green outline). A panel shows:
-  - the best-guess name
-  - a confidence level (High / Medium / Low)
-  - the framework component name (when readable), structural type, and the
-    semantic label — plus what each one matched on
-  - the render tree (e.g. `SaveButton ▸ SavePanel ▸ App`) when available
-  - the element's tag, role, id, test id, and classes
-  - a "Copy details" button
+  - the best-guess name and confidence (High / Medium / Low)
+  - framework component name, optional **source file:line** (dev builds),
+    structural type, semantic label
+  - **visible text**, accessible name, and a best-effort **locator**
+  - children summary and render tree when available
+  - tag, role, id, test id, classes
+  - **Copy details** — a full plain-text snapshot (name, component, text,
+    locator, source, tree, page URL…) you can paste to an agent
 - **Navigate without re-hovering:** with an element locked, use the arrow
   keys — `↑` parent, `↓` first child, `←`/`→` previous/next sibling.
 - The panel automatically moves to a corner that doesn't cover the element.
@@ -56,6 +64,12 @@ Reads React fiber / Vue instance / Angular internals on the element to
 recover the developer's own name. Exact on dev builds; on minified
 production builds the names are mangled, so the tool detects that and
 reports the framework instead of showing garbage.
+
+> **Implementation note:** Chrome content scripts run in an *isolated world*
+> and cannot see page JS expandos (`__reactFiber$…`, `__vueParentComponent`,
+> `window.ng`). A small `bridge.js` is injected into the page's **MAIN** world
+> and talks to the content script via a synchronous DOM event + shared
+> attributes — that is what makes framework component names work.
 
 **B. Semantic label**
 Pulls a purpose from (in order) `data-testid`/`data-cy`/`data-qa`,
@@ -100,3 +114,37 @@ This is a heuristic tool, not a certainty machine — always sanity-check the
   but not exhaustive — this is a static list, not a live lookup.
 - It only runs in the top frame, so it can't inspect elements inside
   cross-origin iframes, and it can't see into closed shadow roots.
+
+## Privacy and permissions
+
+The extension requests only `activeTab` and `scripting`. Access is temporary
+and begins only when you invoke the extension; it has no persistent access to
+websites. See the full [privacy policy](PRIVACY.md).
+
+## Development and release
+
+There are no runtime dependencies or build step. Load the repository root as
+an unpacked extension during development.
+
+Validate the manifest and JavaScript:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/release.ps1 -ValidateOnly
+```
+
+Create the allowlisted Chrome Web Store ZIP in `release/`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/release.ps1
+```
+
+See [the store listing sheet](docs/chrome-web-store-listing.md) for listing
+copy, permission justifications, privacy answers, and required assets.
+
+## Contributing, security, and license
+
+Contributions are welcome; read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+Please report vulnerabilities using the process in [SECURITY.md](SECURITY.md).
+
+Name That Component is open-source software licensed under the
+[MIT License](LICENSE).

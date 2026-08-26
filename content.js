@@ -1,6 +1,12 @@
 (() => {
-  if (window.__ntcInjected) return;
-  window.__ntcInjected = true;
+  // Versioned so an extension update can re-inject over an older content script
+  // without requiring a full page reload.
+  const NTC_VERSION = "1.3.0";
+  if (window.__ntcInjected === NTC_VERSION) return;
+  if (window.__ntcCleanup) {
+    try { window.__ntcCleanup(); } catch (_) {}
+  }
+  window.__ntcInjected = NTC_VERSION;
 
   /* ============================================================
    *  Everything runs against the DOM already in the page.
@@ -32,8 +38,6 @@
   function cleanText(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }
   function capText(s, n) { s = cleanText(s); return s.length > n ? s.slice(0, n - 1).trim() + "…" : s; }
   function attr(el, name) { return el && el.getAttribute ? el.getAttribute(name) : null; }
-  function fileBase(p) { return String(p).split(/[\\/]/).pop().replace(/\.[a-z]+$/i, ""); }
-
   function getClassTokens(el) {
     if (!el || !el.className) return [];
     const raw = typeof el.className === "string" ? el.className : (el.className.baseVal || "");
@@ -312,147 +316,35 @@
 
   /* ============================================================
    *  2. FRAMEWORK COMPONENT NAME (the developer's own name)
-   *     Best-effort: exact on dev builds, flagged when minified.
+   *     Read via the MAIN-world bridge (bridge.js). Content scripts
+   *     cannot see React fiber / Vue / Angular expandos — they live
+   *     in the page's isolated JS world. The bridge listens for a
+   *     sync DOM event and writes JSON into a shared attribute.
    * ============================================================ */
 
-  const FW_SKIP = new Set(["Fragment", "Suspense", "SuspenseList", "Provider", "Consumer",
-    "Context", "StrictMode", "Profiler", "Portal", "ForwardRef", "Memo", "Anonymous", "Unknown"]);
+  let probeSeq = 0;
+  let fwCache = new WeakMap(); // element -> framework info | null
 
-  // A minifier turns component names into 1-2 char / lowercase garbage.
-  // Accept only names that look like a real PascalCase component.
-  function looksMeaningful(name) {
-    if (!name || FW_SKIP.has(name)) return false;
-    if (/^Styled/.test(name)) return false;
-    if (/^[a-z]/.test(name)) return false;          // host tag or minified
-    if (name.length < 3) return false;              // "Zt", "Er"
-    if (!/[a-z]/.test(name) && name.length <= 4) return false; // short all-caps
-    return /^[A-Z]/.test(name);
-  }
-  // Vue/Angular dev names are reliable (absent, not garbled, when stripped).
-  function isRealName(name) {
-    return !!name && name.length >= 2 && /[a-zA-Z]/.test(name) && !FW_SKIP.has(name);
-  }
-
-  // Peel HOC wrappers from the outside in: Connect(withRouter(Foo)) -> Foo
-  function unwrapComponentName(raw) {
-    let name = String(raw || ""), m, guard = 0;
-    while ((m = name.match(/^[\w$.]+\((.+)\)$/)) && guard++ < 6) name = m[1];
-    return name.trim();
-  }
-
-  function reactTypeName(t) {
-    if (!t) return null;
-    if (typeof t === "function") return t.displayName || t.name || null;
-    if (typeof t === "object") {
-      return t.displayName ||
-        (t.render && (t.render.displayName || t.render.name)) ||   // forwardRef
-        (t.type && (t.type.displayName || t.type.name)) || null;   // memo
-    }
-    return null;
-  }
-
-  function getReactInfo(el) {
+  // Attribute-based Astro island names are visible without the bridge
+  // (they're real DOM attrs). Keep a lightweight local path as a fallback
+  // when the bridge isn't injected yet.
+  function getAstroInfoLocal(el) {
     try {
-      let key = null;
-      for (const k of Object.keys(el)) {
-        if (k.indexOf("__reactFiber$") === 0 || k.indexOf("__reactInternalInstance$") === 0) { key = k; break; }
-      }
-      if (!key) return null;
-
-      let f = el[key], guard = 0, primary = null;
-      const chain = [];
-      while (f && guard++ < 100) {
-        const clean = unwrapComponentName(reactTypeName(f.type || f.elementType));
-        if (clean && looksMeaningful(clean)) {
-          if (chain.length < 5) chain.push(clean);
-          if (!primary) primary = clean;
-        }
-        f = f.return;
-      }
-      if (primary)
-        return { framework: "React", componentName: primary, humanized: titleCase(primary), chain, minified: false, matchedOn: "React fiber" };
-      return { framework: "React", componentName: null, chain: [], minified: true, matchedOn: "React fiber (names minified in this build)" };
-    } catch (e) { return null; }
-  }
-
-  function getVueInfo(el) {
-    try {
-      let node = el, guard = 0;
-      while (node && guard++ < 40) {
-        const inst = node.__vueParentComponent;      // Vue 3
-        if (inst) {
-          let cur = inst, g2 = 0, primary = null; const chain = [];
-          while (cur && g2++ < 40) {
-            const t = cur.type || {};
-            const name = t.name || t.__name || (t.__file && fileBase(t.__file));
-            if (isRealName(name)) { if (chain.length < 5) chain.push(name); if (!primary) primary = name; }
-            cur = cur.parent;
-          }
-          if (primary) return { framework: "Vue 3", componentName: primary, humanized: titleCase(primary), chain, minified: false, matchedOn: "Vue instance" };
-          return { framework: "Vue 3", componentName: null, chain: [], minified: true, matchedOn: "Vue instance (anonymous components)" };
-        }
-        const vm = node.__vue__;                      // Vue 2
-        if (vm) {
-          let cur = vm, g2 = 0, primary = null; const chain = [];
-          while (cur && g2++ < 40) {
-            const o = cur.$options || {};
-            const name = o.name || o._componentTag || (o.__file && fileBase(o.__file));
-            if (isRealName(name)) { if (chain.length < 5) chain.push(name); if (!primary) primary = name; }
-            cur = cur.$parent;
-          }
-          if (primary) return { framework: "Vue 2", componentName: primary, humanized: titleCase(primary), chain, minified: false, matchedOn: "Vue instance" };
-          return { framework: "Vue 2", componentName: null, chain: [], minified: true, matchedOn: "Vue instance (anonymous)" };
-        }
-        node = node.parentElement;
-      }
-      return null;
-    } catch (e) { return null; }
-  }
-
-  function getAngularInfo(el) {
-    try {
-      if (!window.ng || typeof window.ng.getComponent !== "function") return null;
-      let node = el, guard = 0;
-      while (node && guard++ < 40) {
-        let comp = null;
-        try { comp = window.ng.getComponent(node); } catch (_) {}
-        if (comp && comp.constructor) {
-          const name = comp.constructor.name;
-          if (looksMeaningful(name))
-            return { framework: "Angular", componentName: name, humanized: titleCase(name), chain: [name], minified: false, matchedOn: "ng.getComponent()" };
-          return { framework: "Angular", componentName: null, chain: [], minified: true, matchedOn: "Angular (component names minified)" };
-        }
-        node = node.parentElement;
-      }
-      return null;
-    } catch (e) { return null; }
-  }
-
-  // Astro: .astro components compile to static HTML (no runtime identity),
-  // but interactive "islands" are wrapped in <astro-island>, whose
-  // component-url / component-export attributes carry the real component
-  // name — regardless of which UI framework the island uses (React, Preact,
-  // Vue, Svelte, Solid…). This works even before hydration and for client:only.
-  function astroIslandName(island) {
-    const exp = attr(island, "component-export");
-    if (exp && exp !== "default" && /^[A-Za-z_$]/.test(exp)) return exp;
-    const url = attr(island, "component-url") || "";
-    let base = url.split(/[?#]/)[0].split("/").pop() || "";
-    base = base.replace(/\.(jsx?|tsx?|mjs|cjs|vue|svelte|astro)$/i, "");
-    // strip a trailing build hash like ".CkxQrfQ7" (has a digit or mixed case)
-    base = base.replace(/\.([A-Za-z0-9_-]{6,})$/, (m, h) =>
-      /[0-9]/.test(h) || (/[a-z]/.test(h) && /[A-Z]/.test(h)) ? "" : m);
-    if (base && /[A-Za-z]/.test(base) && !/^(index|client|entry|chunk|app|main|hoisted)$/i.test(base)) return base;
-    return null;
-  }
-
-  function getAstroInfo(el) {
-    try {
-      // 1. inside an interactive island — recover the island component name
       let node = el, guard = 0;
       while (node && guard++ < 40) {
         if (node.tagName && node.tagName.toLowerCase() === "astro-island") {
-          const name = astroIslandName(node);
+          const exp = attr(node, "component-export");
+          let name = null;
+          if (exp && exp !== "default" && /^[A-Za-z_$]/.test(exp)) name = exp;
+          else {
+            const url = attr(node, "component-url") || "";
+            let base = url.split(/[?#]/)[0].split("/").pop() || "";
+            base = base.replace(/\.(jsx?|tsx?|mjs|cjs|vue|svelte|astro)$/i, "");
+            base = base.replace(/\.([A-Za-z0-9_-]{6,})$/, (m, h) =>
+              /[0-9]/.test(h) || (/[a-z]/.test(h) && /[A-Z]/.test(h)) ? "" : m);
+            if (base && /[A-Za-z]/.test(base) && !/^(index|client|entry|chunk|app|main|hoisted)$/i.test(base))
+              name = base;
+          }
           const client = attr(node, "client");
           const detail = client ? `client:${client}` : "island";
           if (name)
@@ -461,8 +353,6 @@
         }
         node = node.parentElement;
       }
-      // 2. static markup emitted by an .astro component (scoped-style marker);
-      //    the specific component name is compiled away and not recoverable.
       node = el; guard = 0;
       while (node && guard++ < 4) {
         if (node.attributes) {
@@ -477,28 +367,45 @@
     } catch (e) { return null; }
   }
 
-  let _presence;
-  function frameworkPresence() {
-    if (_presence !== undefined) return _presence;
-    let p = null;
+  function probeBridge(el) {
+    if (!el || el.nodeType !== 1) return null;
+    const id = `ntc${++probeSeq}`;
+    const root = document.documentElement;
     try {
-      if (window.__NUXT__ || window.__VUE__ || document.querySelector("[data-v-app]")) p = "Vue";
-      else if (window.ng || document.querySelector("[ng-version]")) p = "Angular";
-      else if (document.querySelector("astro-island")) p = "Astro";
-      else if (document.querySelector("#__next, [data-reactroot]") || window.React) p = "React";
-      else if (document.querySelector('[class*="svelte-"]')) p = "Svelte";
-      else if (window.preact) p = "Preact";
-    } catch (e) {}
-    _presence = p; return p;
+      el.setAttribute("data-ntc-el", id);
+      root.setAttribute("data-ntc-probe-id", id);
+      root.setAttribute("data-ntc-fw", "");
+      // Bridge handler runs synchronously during dispatchEvent.
+      root.dispatchEvent(new CustomEvent("ntc-fw-request", { bubbles: false }));
+      const raw = root.getAttribute("data-ntc-fw");
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
+    } finally {
+      try { el.removeAttribute("data-ntc-el"); } catch (_) {}
+      try {
+        root.removeAttribute("data-ntc-probe-id");
+        root.removeAttribute("data-ntc-fw");
+      } catch (_) {}
+    }
   }
 
   function getFramework(el) {
-    const r = getReactInfo(el); if (r) return r;   // most specific for React islands
-    const v = getVueInfo(el); if (v) return v;
-    const a = getAngularInfo(el); if (a) return a;
-    const isl = getAstroInfo(el); if (isl) return isl; // Svelte/Solid/Preact islands + static .astro
-    const p = frameworkPresence(); if (p) return { framework: p, componentName: null, presenceOnly: true, chain: [] };
-    return null;
+    if (!el || el.nodeType !== 1) return null;
+    if (fwCache.has(el)) return fwCache.get(el);
+
+    let info = probeBridge(el);
+    // If the bridge didn't answer (not injected yet), fall back to Astro
+    // attrs which are visible in the content-script world.
+    if (!info) info = getAstroInfoLocal(el);
+
+    fwCache.set(el, info);
+    return info;
+  }
+
+  function clearFrameworkCache() {
+    fwCache = new WeakMap();
   }
 
   /* ============================================================
@@ -613,7 +520,7 @@
     const purpose = getPurpose(el);
 
     const hasType = st && !st.generic;
-    const comp = fw && fw.componentName ? fw.humanized : null;
+    const comp = fw && fw.componentName ? (fw.humanized || titleCase(fw.componentName)) : null;
     const compGeneric = comp ? isGenericName(comp) : false;
 
     let name, confidence, source, viaAncestor = false;
@@ -641,12 +548,201 @@
       componentMinified: fw ? !!fw.minified : false,
       presenceOnly: fw ? !!fw.presenceOnly : false,
       frameworkDetail: fw && fw.detail ? fw.detail : null,
+      fileSource: fw && fw.source ? fw.source : null,
       type: hasType ? st.type : null,
       typeSource: hasType ? st.source : null,
       system: hasType ? (st.system || null) : null,
       purpose: purpose ? purpose.text : null,
       purposeFrom: purpose ? purpose.from : null,
       chain: fw && fw.chain && fw.chain.length ? fw.chain : null
+    };
+  }
+
+  /* ============================================================
+   *  5. RICH ELEMENT FACTS (text, a11y name, locator, …)
+   *     Extra detail so a copied snapshot is enough for an agent
+   *     to find the same UI in code without re-probing the page.
+   * ============================================================ */
+
+  function getOwnText(el, max) {
+    if (!el) return "";
+    const tag = el.tagName ? el.tagName.toLowerCase() : "";
+    if (tag === "input" || tag === "textarea" || tag === "select") {
+      const v = el.value != null ? String(el.value) : "";
+      if (cleanText(v)) return capText(v, max);
+      const ph = attr(el, "placeholder");
+      return ph ? capText(ph, max) : "";
+    }
+    if (tag === "img" || tag === "area") {
+      const alt = attr(el, "alt");
+      return alt ? capText(alt, max) : "";
+    }
+    // Prefer visible text; fall back to textContent
+    let t = "";
+    try { t = el.innerText; } catch (_) {}
+    if (!cleanText(t)) t = el.textContent;
+    return capText(t, max);
+  }
+
+  function getAccessibleName(el) {
+    const al = attr(el, "aria-label");
+    if (al && cleanText(al)) return { text: capText(al, 120), from: "aria-label" };
+
+    const lb = attr(el, "aria-labelledby");
+    if (lb) {
+      const t = idsText(lb);
+      if (t) return { text: capText(t, 120), from: "aria-labelledby" };
+    }
+
+    const tag = el.tagName ? el.tagName.toLowerCase() : "";
+    if (tag === "img" || tag === "area") {
+      const alt = attr(el, "alt");
+      if (alt && cleanText(alt)) return { text: capText(alt, 120), from: "alt" };
+    }
+    if (tag === "input" || tag === "textarea") {
+      // Associated <label for="id">
+      if (el.id) {
+        try {
+          const lab = document.querySelector(`label[for="${CSS.escape ? CSS.escape(el.id) : el.id}"]`);
+          if (lab) {
+            const t = cleanText(lab.textContent);
+            if (t) return { text: capText(t, 120), from: "label[for]" };
+          }
+        } catch (_) {}
+      }
+      const ph = attr(el, "placeholder");
+      if (ph && cleanText(ph)) return { text: capText(ph, 120), from: "placeholder" };
+    }
+    if (tag === "button" || tag === "a" || attr(el, "role") === "button") {
+      const t = getOwnText(el, 80);
+      if (t) return { text: t, from: "text content" };
+    }
+    const title = attr(el, "title");
+    if (title && cleanText(title)) return { text: capText(title, 120), from: "title" };
+    return null;
+  }
+
+  function bestLocator(el) {
+    const tid = firstTestId(el);
+    if (tid) {
+      // Prefer the actual attribute name that matched
+      for (const a of TESTID_ATTRS) {
+        if (attr(el, a) === tid) return { kind: a, value: tid, selector: `[${a}="${tid}"]` };
+      }
+    }
+    if (el.id && !looksAutoGenerated(el.id))
+      return { kind: "id", value: el.id, selector: `#${el.id}` };
+
+    const al = attr(el, "aria-label");
+    if (al && cleanText(al))
+      return { kind: "aria-label", value: cleanText(al), selector: `[aria-label="${cleanText(al)}"]` };
+
+    const role = attr(el, "role");
+    const name = getAccessibleName(el);
+    if (role && name)
+      return { kind: "role+name", value: `${role} "${name.text}"`, selector: `[role="${role}"]` };
+
+    const nameAttr = attr(el, "name");
+    if (nameAttr && !looksAutoGenerated(nameAttr))
+      return { kind: "name", value: nameAttr, selector: `[name="${nameAttr}"]` };
+
+    return { kind: "css", value: cssPath(el), selector: cssPath(el) };
+  }
+
+  function cssPath(el) {
+    const parts = [];
+    let node = el;
+    let depth = 0;
+    while (node && node.nodeType === 1 && depth < 5 && node !== document.body && node !== document.documentElement) {
+      const tid = firstTestId(node);
+      if (tid) {
+        let attrName = "data-testid";
+        for (const a of TESTID_ATTRS) { if (attr(node, a) === tid) { attrName = a; break; } }
+        parts.unshift(`[${attrName}="${tid}"]`);
+        break;
+      }
+      if (node.id && !looksAutoGenerated(node.id)) {
+        parts.unshift(`#${node.id}`);
+        break;
+      }
+      let part = node.tagName.toLowerCase();
+      const parent = node.parentElement;
+      if (parent) {
+        const same = Array.prototype.filter.call(parent.children, (c) => c.tagName === node.tagName);
+        if (same.length > 1) {
+          const idx = Array.prototype.indexOf.call(same, node) + 1;
+          part += `:nth-of-type(${idx})`;
+        }
+      }
+      parts.unshift(part);
+      node = parent;
+      depth++;
+    }
+    return parts.join(" > ") || (el.tagName ? el.tagName.toLowerCase() : "");
+  }
+
+  function childSummary(el, maxKids) {
+    if (!el || !el.children) return null;
+    const n = el.children.length;
+    if (!n) return null;
+    const samples = [];
+    const limit = Math.min(n, maxKids || 4);
+    for (let i = 0; i < limit; i++) {
+      const c = el.children[i];
+      const tag = c.tagName ? c.tagName.toLowerCase() : "?";
+      const t = getOwnText(c, 40);
+      samples.push(t ? `<${tag}> "${t}"` : `<${tag}>`);
+    }
+    const more = n > limit ? ` (+${n - limit} more)` : "";
+    return `${n} child${n === 1 ? "" : "ren"}: ${samples.join("; ")}${more}`;
+  }
+
+  function ancestorTags(el, depth) {
+    const tags = [];
+    let node = el.parentElement;
+    let d = 0;
+    while (node && d < (depth || 4) && node !== document.body) {
+      tags.push(node.tagName.toLowerCase());
+      node = node.parentElement;
+      d++;
+    }
+    return tags.length ? tags.join(" < ") : null;
+  }
+
+  function collectFacts(el) {
+    const tag = el.tagName ? el.tagName.toLowerCase() : "";
+    const role = attr(el, "role");
+    const testid = firstTestId(el);
+    const a11y = getAccessibleName(el);
+    const text = getOwnText(el, 240);
+    const locator = bestLocator(el);
+    const href = tag === "a" ? attr(el, "href") : null;
+    const inputType = tag === "input" ? (attr(el, "type") || "text") : null;
+    const nameAttr = attr(el, "name");
+    const placeholder = attr(el, "placeholder");
+    const value = (tag === "input" || tag === "textarea") && el.value != null
+      ? capText(String(el.value), 120) : null;
+    const classes = getClassTokens(el);
+
+    return {
+      tag,
+      role: role || null,
+      id: el.id || null,
+      testid: testid || null,
+      classes: classes.length ? classes.join(" ") : null,
+      text: text || null,
+      accessibleName: a11y ? a11y.text : null,
+      accessibleNameFrom: a11y ? a11y.from : null,
+      locator: locator.selector,
+      locatorKind: locator.kind,
+      href: href || null,
+      inputType,
+      nameAttr: nameAttr || null,
+      placeholder: placeholder || null,
+      value,
+      children: childSummary(el, 4),
+      ancestors: ancestorTags(el, 4),
+      pageUrl: (typeof location !== "undefined" && location.href) ? location.href : null
     };
   }
 
@@ -679,7 +775,7 @@
         box-shadow: 0 4px 12px rgba(0,0,0,.25); max-width: 260px; overflow: hidden; text-overflow: ellipsis;
       }
       #panel {
-        position: fixed; width: 320px; max-height: 82vh; overflow-y: auto;
+        position: fixed; width: 340px; max-height: 82vh; overflow-y: auto;
         background: #ffffff; color: #111827; border-radius: 12px;
         box-shadow: 0 12px 32px rgba(0,0,0,.28); z-index: 2147483647;
         display: none; border: 1px solid #e5e7eb;
@@ -700,7 +796,7 @@
       .badge.Low { background: #fee2e2; color: #991b1b; }
       .sec { border-top: 1px solid #f3f4f6; padding-top: 10px; margin-top: 4px; }
       .kv { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; margin-bottom: 5px; }
-      .kv .k { color: #6b7280; flex: 0 0 84px; }
+      .kv .k { color: #6b7280; flex: 0 0 78px; }
       .kv .v { color: #111827; word-break: break-word; flex: 1; }
       .kv .v code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
         background: #eef2ff; color: #3730a3; padding: 1px 5px; border-radius: 4px; }
@@ -782,7 +878,7 @@
   function positionPanel(el) {
     const gap = 16;
     const pr = panel.getBoundingClientRect();
-    const w = pr.width || 320, h = pr.height || 200;
+    const w = pr.width || 340, h = pr.height || 200;
     const er = el.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight;
     const corners = [
@@ -805,13 +901,46 @@
   function kv(k, v) { return `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
 
   function copyText(r, facts) {
-    const lines = [`Component: ${r.name}`, `Confidence: ${r.confidence}`];
-    if (r.component) lines.push(`${r.framework} component: ${r.component}${r.frameworkDetail ? " (" + r.frameworkDetail + ")" : ""}`);
-    else if (r.framework) lines.push(`Framework: ${r.framework}${r.frameworkDetail ? " (" + r.frameworkDetail + ")" : r.componentMinified ? " (names minified)" : ""}`);
-    if (r.type) lines.push(`Type: ${r.type}${r.system ? " (" + r.system + ")" : ""} — ${r.typeSource}`);
-    if (r.purpose) lines.push(`Label: ${r.purpose} (from ${r.purposeFrom})`);
-    if (r.chain && r.chain.length > 1) lines.push(`Tree: ${r.chain.join(" > ")}`);
-    lines.push(`Tag: <${facts.tag}>`, `Role: ${facts.role}`, `ID: ${facts.id}`, `Test id: ${facts.testid}`, `Classes: ${facts.classes}`);
+    const lines = [];
+    lines.push(`Name: ${r.name}`);
+    lines.push(`Confidence: ${r.confidence}`);
+    lines.push(`Matched via: ${r.source}`);
+
+    if (r.component) {
+      lines.push(`Framework component: ${r.component} (${r.framework})`);
+    } else if (r.framework) {
+      const note = r.componentMinified ? "names minified"
+        : (r.frameworkDetail || (r.presenceOnly ? "detected on page" : ""));
+      lines.push(`Framework: ${r.framework}${note ? ` (${note})` : ""}`);
+    }
+    if (r.fileSource) lines.push(`Source file: ${r.fileSource}`);
+    if (r.chain && r.chain.length) lines.push(`Render tree: ${r.chain.join(" ▸ ")}`);
+
+    if (r.type) {
+      lines.push(`Structural type: ${r.type}${r.system ? ` · ${r.system}` : ""}`);
+      if (r.typeSource) lines.push(`Type matched: ${r.typeSource}${r.viaAncestor ? " (from parent)" : ""}`);
+    }
+    if (r.purpose) lines.push(`Semantic label: ${r.purpose} (from ${r.purposeFrom})`);
+
+    if (facts.text) lines.push(`Text: ${facts.text}`);
+    if (facts.accessibleName)
+      lines.push(`Accessible name: ${facts.accessibleName}${facts.accessibleNameFrom ? ` (from ${facts.accessibleNameFrom})` : ""}`);
+    if (facts.value && facts.value !== facts.text) lines.push(`Value: ${facts.value}`);
+    if (facts.placeholder) lines.push(`Placeholder: ${facts.placeholder}`);
+
+    lines.push(`Tag: <${facts.tag}>`);
+    if (facts.role) lines.push(`Role: ${facts.role}`);
+    if (facts.inputType) lines.push(`Input type: ${facts.inputType}`);
+    if (facts.id) lines.push(`ID: ${facts.id}`);
+    if (facts.testid) lines.push(`Test id: ${facts.testid}`);
+    if (facts.nameAttr) lines.push(`Name attr: ${facts.nameAttr}`);
+    if (facts.href) lines.push(`Href: ${facts.href}`);
+    if (facts.locator) lines.push(`Locator: ${facts.locator}${facts.locatorKind ? ` (${facts.locatorKind})` : ""}`);
+    if (facts.classes) lines.push(`Classes: ${facts.classes}`);
+    if (facts.children) lines.push(`Children: ${facts.children}`);
+    if (facts.ancestors) lines.push(`Ancestors: ${facts.ancestors}`);
+    if (facts.pageUrl) lines.push(`Page: ${facts.pageUrl}`);
+
     return lines.join("\n");
   }
 
@@ -821,13 +950,7 @@
   // (never page text). Keep that invariant if you edit this function.
   function renderPanel(el) {
     const r = identify(el);
-    const facts = {
-      tag: el.tagName.toLowerCase(),
-      role: attr(el, "role") || "—",
-      id: el.id || "—",
-      testid: firstTestId(el) || "—",
-      classes: getClassTokens(el).join(" ") || "—"
-    };
+    const facts = collectFacts(el);
 
     const detailHtml = r.frameworkDetail ? ` <span class="muted">· ${escapeHtml(r.frameworkDetail)}</span>` : "";
     const rows = [];
@@ -838,6 +961,9 @@
         : (detailHtml || (r.presenceOnly ? " <span class=\"muted\">· detected on page</span>" : ""));
       rows.push(kv("Framework", escapeHtml(r.framework) + note));
     }
+    if (r.fileSource) {
+      rows.push(kv("Source", `<code>${escapeHtml(r.fileSource)}</code>`));
+    }
     if (r.type) {
       rows.push(kv("Type", escapeHtml(r.type) +
         (r.system ? ` <span class="muted">· ${escapeHtml(r.system)}</span>` : "") +
@@ -846,6 +972,20 @@
     }
     if (r.purpose) {
       rows.push(kv("Label", escapeHtml(r.purpose) + ` <span class="muted">· ${escapeHtml(r.purposeFrom)}</span>`));
+    }
+    if (facts.text) {
+      rows.push(kv("Text", escapeHtml(facts.text)));
+    }
+    if (facts.accessibleName && facts.accessibleName !== facts.text) {
+      rows.push(kv("A11y name", escapeHtml(facts.accessibleName) +
+        (facts.accessibleNameFrom ? ` <span class="muted">· ${escapeHtml(facts.accessibleNameFrom)}</span>` : "")));
+    }
+    if (facts.locator) {
+      rows.push(kv("Locator", `<code>${escapeHtml(facts.locator)}</code>` +
+        (facts.locatorKind ? ` <span class="muted">· ${escapeHtml(facts.locatorKind)}</span>` : "")));
+    }
+    if (facts.children) {
+      rows.push(kv("Children", `<span class="muted">${escapeHtml(facts.children)}</span>`));
     }
 
     const chainHtml = (r.chain && r.chain.length > 1)
@@ -858,11 +998,12 @@
       ${chainHtml}
       <div class="facts">
         <span class="pill">&lt;${escapeHtml(facts.tag)}&gt;</span>
-        ${facts.role !== "—" ? `<span class="pill">role=${escapeHtml(facts.role)}</span>` : ""}
-        ${facts.testid !== "—" ? `<span class="pill">testid=${escapeHtml(facts.testid)}</span>` : ""}
-        ${facts.id !== "—" ? `<span class="pill">#${escapeHtml(facts.id)}</span>` : ""}
+        ${facts.role ? `<span class="pill">role=${escapeHtml(facts.role)}</span>` : ""}
+        ${facts.testid ? `<span class="pill">testid=${escapeHtml(facts.testid)}</span>` : ""}
+        ${facts.id ? `<span class="pill">#${escapeHtml(facts.id)}</span>` : ""}
+        ${facts.inputType ? `<span class="pill">type=${escapeHtml(facts.inputType)}</span>` : ""}
       </div>
-      <div class="mono">${escapeHtml(facts.classes)}</div>
+      ${facts.classes ? `<div class="mono">${escapeHtml(facts.classes)}</div>` : ""}
       <div class="actions">
         <button id="ntc-copy">Copy details</button>
         <button id="ntc-exit" class="primary">Exit</button>
@@ -954,6 +1095,8 @@
   function deactivate() {
     active = false;
     selected = null;
+    lastHovered = null;
+    clearFrameworkCache();
     document.removeEventListener("mousemove", onMouseMove, true);
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("keydown", onKeydown, true);
@@ -968,7 +1111,17 @@
 
   window.__ntcToggle = () => (active ? deactivate() : activate());
 
-  chrome.runtime.onMessage.addListener((message) => {
+  function onRuntimeMessage(message) {
     if (message && message.type === "NTC_TOGGLE_PICKER") window.__ntcToggle();
-  });
+  }
+  chrome.runtime.onMessage.addListener(onRuntimeMessage);
+
+  // Allows a newer content.js to tear down this instance before replacing it.
+  window.__ntcCleanup = () => {
+    try { deactivate(); } catch (_) {}
+    try { chrome.runtime.onMessage.removeListener(onRuntimeMessage); } catch (_) {}
+    delete window.__ntcToggle;
+    delete window.__ntcInjected;
+    delete window.__ntcCleanup;
+  };
 })();
