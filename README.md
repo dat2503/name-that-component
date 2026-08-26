@@ -1,5 +1,6 @@
 # Name That Component
 
+[![Latest release](https://img.shields.io/github/v/release/dat2503/name-that-component?label=release)](https://github.com/dat2503/name-that-component/releases/latest)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A Chrome extension that lets you point at any UI element on a page and see
@@ -18,22 +19,26 @@ what it is. It combines three layers of evidence:
   Shopify Polaris, Semantic UI, shadcn/ui, Radix, Headless UI, Ionic, and
   other Web Component libraries).
 
-Everything runs locally in the content script. No network requests, no
-external API calls, no data collection.
+Everything runs locally in your browser through the extension's background
+worker, isolated content script, and packaged main-world bridge. There are no
+network requests, external API calls, analytics, or data collection.
 
-## Install from the Chrome Web Store
+## Chrome Web Store status
 
-The public store link will be added here after Chrome Web Store review. Until
-then, use the unpacked installation instructions below.
+The Store listing is being prepared for review. Its public link will be added
+here after publication. Until then, install the signed-off `v1.0.0` release
+manually.
 
-## Install (unpacked, for development/personal use)
+## Install manually
 
-1. Unzip this folder somewhere permanent (don't delete it after installing —
-   Chrome loads the extension directly from these files).
-2. Open `chrome://extensions` in Chrome.
-3. Turn on **Developer mode** (top-right toggle).
-4. Click **Load unpacked** and select the `name-that-component` folder.
-5. Pin the extension (puzzle-piece icon in the toolbar → pin) for quick access.
+1. [Download the `v1.0.0` extension ZIP](https://github.com/dat2503/name-that-component/releases/download/v1.0.0/name-that-component-1.0.0.zip).
+2. Extract the ZIP somewhere permanent (Chrome loads the extension directly
+   from these files).
+3. Open `chrome://extensions` in Chrome.
+4. Turn on **Developer mode** (top-right toggle).
+5. Click **Load unpacked** and select the extracted folder containing
+   `manifest.json`.
+6. Pin the extension (puzzle-piece icon in the toolbar → pin) for quick access.
 
 ## Use
 
@@ -123,8 +128,14 @@ websites. See the full [privacy policy](PRIVACY.md).
 
 ## Development and release
 
-There are no runtime dependencies or build step. Load the repository root as
-an unpacked extension during development.
+There are no extension runtime dependencies or compilation step. Load the
+repository root as an unpacked extension during development.
+
+The validation and release helpers currently require:
+
+- Chrome 95 or newer
+- Node.js 22 or newer
+- Windows PowerShell 5.1 or PowerShell 7
 
 Validate the manifest and JavaScript:
 
@@ -138,6 +149,20 @@ Create the allowlisted Chrome Web Store ZIP in `release/`:
 powershell -ExecutionPolicy Bypass -File scripts/release.ps1
 ```
 
+Run the browser-level smoke test against realistic React metadata, a labeled
+form input, and degraded Unicode input:
+
+```powershell
+node scripts/browser-smoke-test.mjs
+```
+
+Create the Store dashboard asset bundle after generating its image/video
+assets:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/package-store-assets.ps1
+```
+
 See [the store listing sheet](docs/chrome-web-store-listing.md) for listing
 copy, permission justifications, privacy answers, and required assets.
 
@@ -148,3 +173,9 @@ Please report vulnerabilities using the process in [SECURITY.md](SECURITY.md).
 
 Name That Component is open-source software licensed under the
 [MIT License](LICENSE).
+
+## Project links
+
+- [Latest release](https://github.com/dat2503/name-that-component/releases/latest)
+- [Changelog](CHANGELOG.md)
+- [Report a bug or request a feature](https://github.com/dat2503/name-that-component/issues)
